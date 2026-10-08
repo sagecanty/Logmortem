@@ -16,3 +16,4 @@ __pycache__/
 *.pyc
 eval/results/*
 !eval/results/injected-*.json
+.DS_Store
