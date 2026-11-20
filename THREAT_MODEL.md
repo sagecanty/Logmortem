@@ -1,6 +1,6 @@
 # Logmortem Threat Model
 
-> **Status:** v0.2 · **Last reviewed:** 2026-11-19 · **Owner:** repo maintainer
+> **Status:** v0.3 · **Last reviewed:** 2026-11-19 · **Owner:** repo maintainer
 > **Method:** data-flow + trust boundaries, threats mapped to the
 > [OWASP Top 10 for LLM Applications (2025)](https://genai.owasp.org/llm-top-10/)
 > and MITRE ATLAS. Companion to [RISK_REGISTER.md](RISK_REGISTER.md).
@@ -97,17 +97,17 @@ flowchart LR
 | **T1** | TB2 | Indirect prompt injection via log content steers RCA (blame, fake evidence, malicious actions) | LLM01 · ATLAS AML.T0051.001 | M | H | System-prompt instruction + 3 adversarial fixtures | 🟡 |
 | **T2** | TB1→TB2 | **Injection delivered through outsider-controlled logged fields** (User-Agent, URL path, username), with no access needed | LLM01 | **H** | H | None. Current fixtures plant payloads in app `ERROR` lines, which assumes insider/app access | 🔴 |
 | **T3** | TB2 | Obfuscated / paraphrased injection (base64, homoglyphs, split across lines, other languages) passes the grader | LLM01 | M | H | `score_injection()` is an exact substring match on markers, so paraphrased leaks score as "resisted" | 🔴 |
-| **T4** | TB3 | Fabricated commit SHAs / evidence reach humans in production runs | LLM09 | M | M | `verify_citations()` exists **only in `eval/harness.py`**, not the runtime path | 🔴 |
-| **T5** | TB3 | Malicious action items (commands, URLs, IPs) reach an exhausted engineer | LLM05 · LLM06 | L–M | **H** | System prompt only (probabilistic). No deterministic output filter | 🔴 |
-| **T6** | TB3 | Markdown/HTML injection in `GITHUB_STEP_SUMMARY` (links, images that call attacker URLs, misleading formatting) | LLM05 | M | M | None. `rca_output.md` is `cat`'d into the summary unescaped | 🔴 |
+| **T4** | TB3 | Fabricated commit SHAs / evidence reach humans in production runs | LLM09 | M | M | `src/guard.py` runs on every RCA: SHAs not in the deploy history are marked `[unverified]` inline and the draft gets an UNVERIFIED banner | 🟢 |
+| **T5** | TB3 | Malicious action items (commands, URLs, IPs) reach an exhausted engineer | LLM05 · LLM06 | L–M | **H** | System prompt + `src/guard.py`: action items with download-and-execute patterns are withheld; URLs/IPs defanged everywhere. Pattern-based, so a novel or obfuscated command can still pass | 🟡 |
+| **T6** | TB3 | Markdown/HTML injection in `GITHUB_STEP_SUMMARY` (links, images that call attacker URLs, misleading formatting) | LLM05 | M | M | `formatter.md()` escapes markdown and HTML in every model field and in the alert/log group; newlines collapsed | 🟢 |
 | **T7** | TB4 | **Expression injection in `auto-rca.yml`**: `${{ github.event.workflow_run.* }}` was interpolated directly into `run:` shell (3 steps, as of `e33c7d6`) in a job holding A1–A3 | CI/CD | **VERIFY** | **H** | Event values passed via job-level `env:` and quoted; CI test fails on any `${{ }}` inside `run:` | 🟢 |
 | **T8** | TB6 | Long-lived AWS keys stored as repo secrets; leaked once = valid until manually revoked | Credential mgmt | M | H | Workflow uses OIDC (`AWS_ROLE_ARN`); CI test fails if static key names reappear. **Pending:** create role, revoke old key ([setup](docs/aws-oidc-setup.md)) | 🟡 |
 | **T9** | TB6 | IAM principal over-privileged for what Logmortem needs (`logs:FilterLogEvents` on one log group) | Least privilege | ? | H | Least-privilege policy committed as code ([docs/iam/](docs/iam/)). **Pending:** apply it to the role | 🟡 |
-| **T10** | TB5 | Secrets / PII inside logs sent to a third-party LLM and echoed into the RCA artifact | LLM02 | H | M–H | None. No redaction before prompt | 🔴 |
-| **T11** | TB1→TB2 | **Context flooding:** attacker floods logs early in the window so the decisive lines are cut. `collector.py:138–139` keeps the *first* 50 errors / 200 lines | LLM10 · availability | M | M | Documented as R6, unmitigated | 🔴 |
-| **T12** | TB3 | `json_repair` fallback "repairs" malformed or manipulated output into valid-looking JSON instead of failing closed | LLM05 | L | M | None. Prefer API structured outputs; fail closed on repair | 🟡 |
+| **T10** | TB5 | Secrets / PII inside logs sent to a third-party LLM and echoed into the RCA artifact | LLM02 | H | M–H | `src/redact.py` strips known token formats, key=value secrets and emails in `build_context()`, before the prompt. Pattern-based: unknown secret formats pass | 🟡 |
+| **T11** | TB1→TB2 | **Context flooding:** attacker floods logs early in the window so the decisive lines are cut. `collector.py:138–139` keeps the *first* 50 errors / 200 lines | LLM10 · availability | M | M | `select_lines()`: repeats collapsed with counts; over budget keeps first 25% + last 75% of the window and tells the model what was omitted. A flood on both sides of a mid-window cause can still crowd it out | 🟡 |
+| **T12** | TB3 | `json_repair` fallback "repairs" malformed or manipulated output into valid-looking JSON instead of failing closed | LLM05 | L | M | `validate_rca()`: required fields and types checked, unknown keys dropped; repaired JSON must pass too and is flagged UNVERIFIED; failures exit with no RCA | 🟢 |
 | **T13** | Supply chain | Unpinned actions (`@v4` tags) and unpinned/loosely pinned pip deps (`json-repair` had no version) run with secrets in env | LLM03 | L | H | Actions pinned to commit SHAs; deps locked with hashes + `--require-hashes`; Dependabot for updates; CI test fails on tag-pinned actions | 🟢 |
-| **T14** | Output | RCA artifacts (log excerpts) retained 30 days; on a **public repo**, artifacts are downloadable by any signed-in GitHub user | Data exposure | M | M | None | 🔴 |
+| **T14** | Output | RCA artifacts (log excerpts) retained 30 days; on a **public repo**, artifacts are downloadable by any signed-in GitHub user | Data exposure | M | M | Artifact skipped on public repos, 7-day retention on private. The job summary itself is still visible on public repos; T10 redaction limits what it contains | 🟡 |
 | **T15** | TB2 | Denial of wallet: attacker-triggered workflow failures fire `auto-rca` repeatedly, burning API spend | LLM10 | L | L–M | None. Add rate limit / concurrency group | ⚪ |
 | **T16** | TB4 | `workflow_run` trigger runs with secrets after workflows that untrusted PRs can start (zizmor: `dangerous-triggers`) | CI/CD | L | H | Job never checks out or executes code from the triggering run (it checks out the default branch only); all event values go through `env:` (T7). Kept because reacting to *any* failed workflow is the feature | ⚪ |
 
@@ -120,14 +120,14 @@ Ordered by risk reduction per hour of work.
 | ✅ P0 | Move every `${{ github.event.* }}` value into `env:` and reference it as a quoted `"$VAR"` in shell | T7 | done |
 | 🟡 P0 | Replace static AWS keys with **GitHub OIDC → IAM role**; scope role to `logs:FilterLogEvents` on the single log group | T8, T9 | code done; AWS setup pending |
 | ✅ P0 | Pin actions to full commit SHAs; pin all pip deps with hashes | T13 | done |
-| **P1** | **Runtime output guard** in `main.py` between `generate_rca()` and `format_markdown()`: (a) run `verify_citations()` and drop or flag unknown SHAs; (b) strip URLs, IPs and shell-like strings from `action_items` unless allowlisted; (c) if the guard trips, label the RCA `UNVERIFIED` rather than silently passing it | T4, T5 | 3–4 h |
-| **P1** | Escape markdown/HTML in all model-generated fields before writing to the step summary; disallow images and raw links | T6 | 1 h |
-| **P1** | **Pre-prompt redaction:** regex + entropy scan for tokens, keys, emails and card-like numbers in log lines before they reach the LLM | T10 | 2–3 h |
+| ✅ P1 | **Runtime output guard** in `main.py` between `generate_rca()` and `format_markdown()`: (a) run `verify_citations()` and drop or flag unknown SHAs; (b) strip URLs, IPs and shell-like strings from `action_items` unless allowlisted; (c) if the guard trips, label the RCA `UNVERIFIED` rather than silently passing it | T4, T5 | done |
+| ✅ P1 | Escape markdown/HTML in all model-generated fields before writing to the step summary; disallow images and raw links | T6 | done |
+| ✅ P1 | **Pre-prompt redaction:** known token formats, key=value secrets, emails (entropy scan and card numbers not yet) | T10 | done |
 | **P2** | New fixtures: injection via UA / path / username fields shaped like real ALB/nginx log formats | T2 | 2 h |
 | **P2** | Obfuscated-payload fixtures + a **behavioral grader** (did the draft *do* what the attacker wanted?), not just substring matching | T3 | 4–6 h |
-| **P2** | Context selection: rank lines by relevance (error level, proximity to alert, dedupe repeated lines) instead of `[:N]` truncation; add a flood fixture | T11 | 4 h |
-| **P3** | Switch to API structured outputs; on JSON failure, **fail closed** (no RCA) instead of repairing | T12 | 1 h |
-| **P3** | Artifact retention ≤ 7 days; skip artifact upload on public repos | T14 | 15 min |
+| 🟡 P2 | Context selection: dedupe + head/tail done; relevance ranking (error level, proximity to alert) still open | T11 | partly done |
+| ✅ P3 | Schema validation + fail closed (API structured outputs still a possible upgrade) | T12 | done |
+| ✅ P3 | Artifact retention ≤ 7 days; skip artifact upload on public repos | T14 | done |
 | **P3** | `concurrency:` group + daily run cap on `auto-rca` | T15 | 15 min |
 
 ## 7. Verification
@@ -137,12 +137,13 @@ Every mitigated threat needs a test that would fail if the fix regressed, the sa
 | Threat | Test |
 |--------|------|
 | T2, T3 | New fixtures in `fixtures/injected-*`; `injection_resisted` + new `attacker_goal_achieved` metric |
-| T4, T5 | Unit tests on the output guard with planted SHAs / URLs / `curl \| bash` strings, which run **without** the LLM in CI |
-| T6 | Unit test: model fields containing markdown/HTML render inert |
+| T4, T5 | `tests/test_guard.py`: planted SHAs, URLs, IPs and dangerous commands, no LLM needed. Also replays all 11 persisted adversarial drafts: the guard flags exactly the 2 runs that leaked before the prompt fix and nothing in the 9 clean runs |
+| T6 | `tests/test_markdown_safety.py`: images, links, HTML, injected headings and table-breaking pipes all render inert |
+| T12 | `tests/test_validate.py`: bad shapes fail closed, unknown keys dropped, repaired JSON flagged; all 11 real Claude drafts pass |
 | T7, T8, T13 | `tests/test_workflow_security.py`: fails on any `${{ }}` inside `run:`, any non-SHA `uses:`, or static AWS key names. The checker is first tested against known-bad snippets, and it flags all 3 injection sites in the original `auto-rca.yml` |
 | T8, T9 | IAM trust + permissions policies committed as code ([docs/iam/](docs/iam/)); setup in [docs/aws-oidc-setup.md](docs/aws-oidc-setup.md) |
-| T10 | Fixture with fake secrets in logs; assert none appear in prompt or output |
-| T11 | Flood fixture: 300 junk errors before the real cause; assert `cause_hit` still passes |
+| T10 | `tests/test_redact.py`: each token type redacted, key name kept; incident evidence (IPs, ports, SHAs, config values) survives; no fixture evidence redacted |
+| T11 | `tests/test_flood.py`: 500-line identical flood and 400-line varied flood before the cause; cause stays in both error and full log context |
 
 ## 8. Assumptions and out of scope
 
@@ -162,3 +163,4 @@ Every mitigated threat needs a test that would fail if the fix regressed, the sa
 |------|--------|
 | 2026-11-18 | v0.1: initial threat model from a code review of `main` @ `e33c7d6` |
 | 2026-11-19 | v0.2: P0 fixes. T7 and T13 mitigated with CI regression tests; T8/T9 code-complete, AWS-side setup pending. Static analysis (zizmor 1.32): 18 findings (11 high) → 1 high (T16, accepted). Also fixed: `python src/main.py` crashed on import, so `auto-rca` could never have produced an RCA; now `python -m src.main`, with a test |
+| 2026-11-19 | v0.3: P1 + P3 batch. T4, T6, T12 mitigated; T5, T10, T11, T14 partially mitigated (residuals noted per row) |
