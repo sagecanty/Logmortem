@@ -14,6 +14,7 @@ jobs:
     permissions:
       actions: read
       contents: read
+      id-token: write  # OIDC: lets this job assume an AWS role, so no stored AWS keys (THREAT_MODEL T8)
 
     # SECURITY (THREAT_MODEL T7): every value that comes from the triggering
     # event is passed through `env:` and read as a quoted shell variable.
@@ -38,6 +39,13 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Configure AWS credentials (OIDC, short-lived)
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd  # v6.3.0
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_DEFAULT_REGION || 'us-east-1' }}
+          role-session-name: logmortem-auto-rca
+
       - name: Set incident window
         id: window
         run: |
@@ -52,9 +60,6 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION || 'us-east-1' }}
           LOG_GROUP: ${{ secrets.LOG_GROUP || '/aws/ecs/app' }}
           WINDOW_START: ${{ steps.window.outputs.start }}
           WINDOW_END: ${{ steps.window.outputs.end }}
