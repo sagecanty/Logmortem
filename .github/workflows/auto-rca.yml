@@ -90,10 +90,14 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
+      # SECURITY (THREAT_MODEL T14): artifacts on a public repo can be
+      # downloaded by any signed-in GitHub user, and an RCA quotes log content.
+      # Private repos keep it for a week; public repos skip the upload.
       - name: Upload RCA as artifact
-        if: always()
+        if: ${{ always() && github.event.repository.private }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
           name: rca-${{ github.event.workflow_run.run_number }}
           path: rca_output.md
-          retention-days: 30
+          retention-days: 7
+          if-no-files-found: ignore
