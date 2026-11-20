@@ -49,18 +49,26 @@ JSON schema:
 """
 
 
+def _log_line(e: dict) -> str:
+    line = f"[{e['timestamp']}] {e['message']}"
+    if e.get("repeat_count", 1) > 1:
+        line += f"  (x{e['repeat_count']} similar lines)"
+    return line
+
+
 def build_prompt(context: dict) -> str:
     """Build the user prompt from collected incident context."""
 
-    log_section = "\n".join([
-        f"[{e['timestamp']}] {e['message']}"
-        for e in context.get("error_logs", [])
-    ]) or "No error-level logs found."
+    log_section = "\n".join(
+        _log_line(e) for e in context.get("error_logs", [])
+    ) or "No error-level logs found."
 
-    all_logs_section = "\n".join([
-        f"[{e['timestamp']}] {e['message']}"
-        for e in context.get("all_logs", [])
-    ]) or "No logs collected."
+    all_logs_section = "\n".join(
+        _log_line(e) for e in context.get("all_logs", [])
+    ) or "No logs collected."
+    if context.get("omitted_log_events"):
+        all_logs_section += (f"\n[... {context['omitted_log_events']} distinct lines from the "
+                             f"middle of the window omitted to fit the context budget ...]")
 
     deploy_section = ""
     if context.get("deploys"):
