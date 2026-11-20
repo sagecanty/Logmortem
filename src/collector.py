@@ -3,11 +3,52 @@ collector.py — fetches CloudWatch logs and GitHub Actions deploy history
 """
 
 import os
+import re
 import boto3
 import requests
 from datetime import datetime, timedelta
 
 from src.redact import redact_events
+
+# Context budget: how many lines the prompt gets
+ERROR_LOG_CAP = 50
+ALL_LOG_CAP = 200
+_HEAD_SHARE = 0.25  # of the cap kept from the start of the window; the rest from the end
+_DIGITS = re.compile(r"\d+")
+
+
+def select_lines(events: list[dict], cap: int) -> tuple[list[dict], int, int]:
+    """
+    Pick which log lines fit in the prompt (THREAT_MODEL T11).
+
+    Plain `events[:cap]` keeps only the start of the window, so anyone who
+    can write log lines (including outsiders, through logged request fields)
+    could flood the start of an incident and push the decisive lines out.
+
+    1. Collapse repeats: lines identical except for numbers become one line
+       with a repeat_count, so a flood of the same message costs one slot.
+    2. If still over the cap, keep the first 25% and the last 75% of the
+       window instead of only the first N.
+
+    Returns (selected, omitted_count, collapsed_count). Order stays chronological.
+    """
+    kept: dict[str, dict] = {}
+    collapsed = []
+    for e in events:
+        key = _DIGITS.sub("#", e.get("message", ""))
+        if key in kept:
+            kept[key]["repeat_count"] += 1
+            continue
+        item = {**e, "repeat_count": 1}
+        kept[key] = item
+        collapsed.append(item)
+
+    dupes = len(events) - len(collapsed)
+    if len(collapsed) <= cap:
+        return collapsed, 0, dupes
+    head = max(1, int(cap * _HEAD_SHARE))
+    tail = cap - head
+    return collapsed[:head] + collapsed[-tail:], len(collapsed) - cap, dupes
 
 
 def collect_logs(log_group: str, start_time: datetime, end_time: datetime) -> list[dict]:
@@ -133,6 +174,9 @@ def build_context(
         ])
     ]
 
+    selected_errors, _, _ = select_lines(error_logs, ERROR_LOG_CAP)
+    selected_logs, omitted, collapsed = select_lines(logs, ALL_LOG_CAP)
+
     return {
         "log_group": log_group,
         "start_time": start_time.isoformat(),
@@ -141,8 +185,10 @@ def build_context(
         "alert": alert,
         "total_log_events": len(logs),
         "error_log_count": len(error_logs),
-        "error_logs": error_logs[:50],   # cap at 50 to stay within token budget
-        "all_logs": logs[:200],          # cap at 200 for full log context
+        "error_logs": selected_errors,
+        "all_logs": selected_logs,
+        "omitted_log_events": omitted,
+        "collapsed_repeats": collapsed,
         "deploys": deploys,
         "recent_deploys": [d for d in deploys if d.get("status") in ["failure", "success"]],
         "redacted_values": redacted_logs + redacted_deploys,
