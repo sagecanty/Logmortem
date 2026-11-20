@@ -153,6 +153,24 @@ to the GitHub Actions job summary — visible directly in the failed run.
 
 ---
 
+## Security
+
+The model is only one part of the attack surface. [THREAT_MODEL.md](THREAT_MODEL.md)
+covers the system around it: untrusted log fields, model output reaching humans
+and CI, secrets in the workflow, and the supply chain. Hardening in place:
+
+- **No expression injection in CI.** Event values reach shell only through `env:`;
+  `tests/test_workflow_security.py` fails the build if `${{ }}` appears in any `run:` script.
+- **No stored AWS keys.** Short-lived OIDC credentials, scoped to one action
+  (`logs:FilterLogEvents`) on one log group ([docs/iam/](docs/iam/)).
+- **Pinned supply chain.** Actions pinned to commit SHAs; Python deps pinned with
+  hashes (`--require-hashes`); Dependabot proposes updates as PRs.
+
+Model-output risks (wrong cause, false blame, fabrication, prompt injection) are
+measured separately in [RISK_REGISTER.md](RISK_REGISTER.md).
+
+---
+
 ## Usage
 
 ```bash
