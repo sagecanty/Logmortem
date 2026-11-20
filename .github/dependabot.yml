@@ -1,0 +1,12 @@
+# Keeps the SHA-pinned actions and hash-pinned Python deps current.
+# Pinning stops silent changes; Dependabot turns updates into reviewable PRs.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
