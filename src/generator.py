@@ -145,18 +145,69 @@ def generate_rca(context: dict) -> dict:
             raw = raw[4:]
         raw = raw.strip()
 
+    return parse_rca(raw)
+
+
+class RCAValidationError(ValueError):
+    """The model's output isn't a usable RCA. Fail closed: no draft is better than a wrong one."""
+
+
+# field -> allowed types. Anything else the model emits is dropped.
+_SCHEMA = {
+    "title": (str,), "severity": (str,), "summary": (str,), "timeline": (list,),
+    "root_cause": (str,), "contributing_factors": (list,), "impact": (str,),
+    "trigger": (str,), "deploy_correlation": (str, type(None)),
+    "action_items": (list,), "hypotheses": (list,),
+}
+_REQUIRED = ("title", "summary", "root_cause", "action_items")
+
+
+def validate_rca(data) -> dict:
+    """
+    THREAT_MODEL T12. Check the parsed output against the RCA schema and keep
+    only known fields. Raises RCAValidationError instead of passing through
+    something that merely parses.
+    """
+    if not isinstance(data, dict):
+        raise RCAValidationError(f"expected a JSON object, got {type(data).__name__}")
+    missing = [k for k in _REQUIRED if not data.get(k)]
+    if missing:
+        raise RCAValidationError(f"missing required field(s): {', '.join(missing)}")
+    out = {}
+    for key, types in _SCHEMA.items():
+        if key not in data:
+            continue
+        if not isinstance(data[key], types):
+            raise RCAValidationError(f"field '{key}' has type {type(data[key]).__name__}")
+        out[key] = data[key]
+    for i, item in enumerate(out.get("action_items", [])):
+        if not isinstance(item, dict) or not isinstance(item.get("action"), str):
+            raise RCAValidationError(f"action_items[{i}] has no text 'action'")
+    for i, ev in enumerate(out.get("timeline", [])):
+        if not isinstance(ev, dict) or not isinstance(ev.get("event"), str):
+            raise RCAValidationError(f"timeline[{i}] has no text 'event'")
+    for key in ("contributing_factors", "hypotheses"):
+        if any(not isinstance(v, str) for v in out.get(key, [])):
+            raise RCAValidationError(f"'{key}' must be a list of strings")
+    return out
+
+
+def parse_rca(raw: str) -> dict:
+    """
+    Parse and validate model output. Near-valid JSON (a stray ';', a trailing
+    comma) is still repaired, because one bad character shouldn't nuke a sound
+    RCA, but a repaired result must pass the same schema check and is
+    flagged `_repaired` so the output guard marks the draft UNVERIFIED.
+    """
     try:
-        return json.loads(raw)
+        return validate_rca(json.loads(raw))
     except json.JSONDecodeError:
-        # Models occasionally emit near-valid JSON (a stray ';', a trailing
-        # comma, an unescaped quote). One bad char shouldn't nuke an otherwise
-        # sound RCA, so repair and retry. The airtight fix is the API's
-        # structured-outputs mode; this is the pragmatic fallback.
-        from json_repair import repair_json
-        try:
-            return json.loads(repair_json(raw))
-        except (json.JSONDecodeError, ValueError) as e:
-            print(f"⚠️  Claude returned unrepairable JSON: {e}")
-            print("Raw response:")
-            print(raw)
-            raise
+        pass
+    from json_repair import repair_json
+    try:
+        repaired = json.loads(repair_json(raw))
+    except (json.JSONDecodeError, ValueError) as e:
+        raise RCAValidationError(f"unrepairable JSON from model: {e}") from e
+    rca = validate_rca(repaired)
+    rca["_repaired"] = True
+    return rca

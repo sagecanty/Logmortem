@@ -12,7 +12,7 @@ from src.collector import collect_logs, collect_deploys, build_context
 from src.sources import (
     load_fixture, logs_from_fixture, deploys_from_fixture, times_from_fixture
 )
-from src.generator import generate_rca
+from src.generator import generate_rca, RCAValidationError
 from src.formatter import format_markdown, print_summary
 from src.guard import apply_guard
 
@@ -136,7 +136,12 @@ def main():
 
     # Generate RCA via Claude
     print("🤖 Generating RCA with Claude...\n")
-    rca_content = generate_rca(context)
+    try:
+        rca_content = generate_rca(context)
+    except RCAValidationError as e:
+        print(f"❌ No RCA written: model output failed validation ({e}).")
+        print("   Failing closed: a malformed draft is worse than none.")
+        sys.exit(2)
 
     # Deterministic checks the model can't talk its way past (THREAT_MODEL T4/T5)
     rca_content, findings = apply_guard(rca_content, context)
