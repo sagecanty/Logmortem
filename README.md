@@ -144,8 +144,7 @@ to your repo and set these secrets:
 | Secret | Required | Description |
 |--------|----------|-------------|
 | `ANTHROPIC_API_KEY` | Yes | Claude API key |
-| `AWS_ACCESS_KEY_ID` | Yes | AWS credentials |
-| `AWS_SECRET_ACCESS_KEY` | Yes | AWS credentials |
+| `AWS_ROLE_ARN` | Yes | IAM role assumed via GitHub OIDC, so no stored AWS keys. Setup: [docs/aws-oidc-setup.md](docs/aws-oidc-setup.md) |
 | `AWS_DEFAULT_REGION` | No | Defaults to us-east-1 |
 | `LOG_GROUP` | No | CloudWatch log group to query |
 
