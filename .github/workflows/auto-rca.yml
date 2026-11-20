@@ -46,7 +46,7 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: ${{ secrets.AWS_DEFAULT_REGION || 'us-east-1' }}
         run: |
-          python src/main.py \
+          python -m src.main \
             --log-group "${{ secrets.LOG_GROUP || '/aws/ecs/app' }}" \
             --start-time "${{ steps.window.outputs.start }}" \
             --end-time "${{ steps.window.outputs.end }}" \
