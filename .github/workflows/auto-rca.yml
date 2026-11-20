@@ -20,7 +20,7 @@ jobs:
     # event is passed through `env:` and read as a quoted shell variable.
     # Never write `${{ github.event.* }}` inside a `run:` block — Actions
     # substitutes it into the script text *before* the shell runs, so a
-    # crafted value becomes code.
+    # crafted value becomes code. tests/test_workflow_security.py enforces this.
     env:
       RUN_NAME: ${{ github.event.workflow_run.name }}
       RUN_NUMBER: ${{ github.event.workflow_run.run_number }}
