@@ -154,6 +154,9 @@ def print_summary(context: dict) -> None:
     print(f"  Alert:           {context['alert']}")
     print(f"  Log Events:      {context['total_log_events']} total, "
           f"{context['error_log_count']} errors")
+    if context.get("redacted_values"):
+        print(f"  Redacted:        {context['redacted_values']} secret/personal value(s) "
+              f"removed before prompting")
     print()
 
     if context.get("error_logs"):
