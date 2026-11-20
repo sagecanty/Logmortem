@@ -158,14 +158,14 @@ to the GitHub Actions job summary — visible directly in the failed run.
 
 ```bash
 # Basic — logs only
-python src/main.py \
+python -m src.main \
   --log-group /aws/ecs/payment-service \
   --start-time 2026-04-08T02:00:00 \
   --end-time 2026-04-08T03:00:00 \
   --alert "ECS TaskCount dropped below threshold"
 
 # With deploy correlation
-python src/main.py \
+python -m src.main \
   --log-group /aws/ecs/payment-service \
   --start-time 2026-04-08T02:00:00 \
   --end-time 2026-04-08T03:00:00 \
@@ -173,10 +173,10 @@ python src/main.py \
   --repo your-org/your-app
 
 # Offline — replay a seeded incident fixture, no AWS/GitHub creds needed
-python src/main.py --from-fixture fixtures/pool-exhaustion.json
+python -m src.main --from-fixture fixtures/pool-exhaustion.json
 
 # Dry run — see what data was collected without calling Claude
-python src/main.py \
+python -m src.main \
   --log-group /aws/ecs/payment-service \
   --start-time 2026-04-08T02:00:00 \
   --end-time 2026-04-08T03:00:00 \
@@ -185,7 +185,7 @@ python src/main.py \
   --dry-run
 
 # Custom output file
-python src/main.py \
+python -m src.main \
   --log-group /aws/ecs/payment-service \
   --start-time 2026-04-08T02:00:00 \
   --end-time 2026-04-08T03:00:00 \
