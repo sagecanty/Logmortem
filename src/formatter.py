@@ -21,9 +21,11 @@ def md(value) -> str:
     return text.replace("<", "&lt;").replace(">", "&gt;")  # no raw HTML
 
 
-def format_markdown(rca: dict, context: dict) -> str:
+def format_markdown(rca: dict, context: dict, findings: list[str] | None = None) -> str:
     """
     Render the RCA dict as a structured markdown postmortem document.
+    `findings` come from guard.apply_guard(); any finding marks the draft
+    UNVERIFIED at the top of the document.
     """
     now = datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")
     lines = []
@@ -45,6 +47,15 @@ def format_markdown(rca: dict, context: dict) -> str:
         f"| **Generated** | {now} |",
         f"",
     ]
+
+    if findings:
+        lines += [
+            f"> ⚠️ **UNVERIFIED — the output guard changed {len(findings)} thing(s) in this "
+            f"draft.** Check these before acting on it:",
+            ">",
+        ]
+        lines += [f"> - {md(f)}" for f in findings]
+        lines.append("")
 
     # Summary
     lines += [

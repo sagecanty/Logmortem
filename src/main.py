@@ -14,6 +14,7 @@ from src.sources import (
 )
 from src.generator import generate_rca
 from src.formatter import format_markdown, print_summary
+from src.guard import apply_guard
 
 
 def parse_args():
@@ -137,9 +138,17 @@ def main():
     print("🤖 Generating RCA with Claude...\n")
     rca_content = generate_rca(context)
 
+    # Deterministic checks the model can't talk its way past (THREAT_MODEL T4/T5)
+    rca_content, findings = apply_guard(rca_content, context)
+    if findings:
+        print(f"⚠️  Output guard: {len(findings)} finding(s) — draft marked UNVERIFIED")
+        for f in findings:
+            print(f"   - {f}")
+        print()
+
     # Format and write output
     output_path = args.output or f"rca_{start_time.strftime('%Y%m%d_%H%M%S')}.md"
-    markdown = format_markdown(rca_content, context)
+    markdown = format_markdown(rca_content, context, findings)
 
     with open(output_path, "w") as f:
         f.write(markdown)
