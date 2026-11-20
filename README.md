@@ -44,8 +44,10 @@ but used the wrong config key.
 1. Fetches CloudWatch log events for the incident window (plus 10 min pre-window for context)
 2. Pulls GitHub Actions workflow runs from the 24h before the incident
 3. Filters health check noise automatically
-4. Sends everything to Claude with a structured RCA prompt
-5. Outputs a markdown postmortem with timeline, root cause, deploy correlation, contributing factors, and action items
+4. Redacts secrets and emails, collapses repeated lines, and fits the window to the context budget
+5. Sends everything to Claude with a structured RCA prompt, then validates the output against the RCA schema
+6. Runs the output guard: unverified commit references marked, dangerous action items withheld, URLs/IPs defanged
+7. Outputs a markdown postmortem with timeline, root cause, deploy correlation, contributing factors, and action items
 
 ---
 
@@ -165,6 +167,19 @@ and CI, secrets in the workflow, and the supply chain. Hardening in place:
   (`logs:FilterLogEvents`) on one log group ([docs/iam/](docs/iam/)).
 - **Pinned supply chain.** Actions pinned to commit SHAs; Python deps pinned with
   hashes (`--require-hashes`); Dependabot proposes updates as PRs.
+- **Runtime output guard** (`src/guard.py`). The prompt makes the model *likely* to
+  resist injection; the guard doesn't depend on it. Commit SHAs not in the deploy
+  history are marked unverified, download-and-execute action items are withheld,
+  URLs and IPs are defanged, and any finding puts an UNVERIFIED banner on the draft.
+  Replayed against every persisted adversarial run, it flags exactly the two that
+  leaked before the prompt fix.
+- **Inert markdown.** Model text is escaped before it reaches the job summary, so it
+  can't plant images, links, HTML or fake headings.
+- **Redaction before prompting.** Tokens, keys, key=value secrets and emails are
+  stripped from logs before anything goes to the API.
+- **Flood-resistant context.** Repeated lines collapse into one with a count, and
+  over-budget windows keep the start *and* end instead of only the first N lines.
+- **Fail closed.** Output that doesn't match the RCA schema produces no draft.
 
 Model-output risks (wrong cause, false blame, fabrication, prompt injection) are
 measured separately in [RISK_REGISTER.md](RISK_REGISTER.md).
