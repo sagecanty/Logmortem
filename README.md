@@ -199,7 +199,7 @@ python -m src.main \
 ```bash
 # clone this repo (Code → copy URL), then:
 cd Logmortem
-pip install -r requirements.txt
+pip install --require-hashes -r requirements.txt
 ```
 
 ```bash
@@ -214,8 +214,15 @@ AWS credentials via standard boto3 chain (`~/.aws/credentials`, env vars, or ins
 ## Running tests
 
 ```bash
-pip install pytest pytest-cov
-pytest tests/ -v --cov=src --cov-report=term-missing
+pytest tests/ -v --cov=src --cov-report=term-missing   # pytest is in requirements.txt
+```
+
+Dependencies are declared in `requirements.in` and locked with hashes in
+`requirements.txt`. To change one, edit `requirements.in` and re-lock:
+
+```bash
+pip install pip-tools
+pip-compile --generate-hashes --allow-unsafe --strip-extras -o requirements.txt requirements.in
 ```
 
 ---
