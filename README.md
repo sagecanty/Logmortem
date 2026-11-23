@@ -198,7 +198,7 @@ python -m src.main \
 ## Setup
 
 ```bash
-git clone https://github.com/sezgiozrn/Logmortem.git
+# clone this repo (Code → copy URL), then:
 cd Logmortem
 pip install -r requirements.txt
 ```

@@ -1,6 +1,6 @@
 # Logmortem Threat Model
 
-> **Status:** v0.1 draft · **Last reviewed:** 2026-11-18 · **Owner:** @sagecanty
+> **Status:** v0.1 draft · **Last reviewed:** 2026-11-18 · **Owner:** repo maintainer
 > **Method:** data-flow + trust boundaries, threats mapped to the
 > [OWASP Top 10 for LLM Applications (2025)](https://genai.owasp.org/llm-top-10/)
 > and MITRE ATLAS. Companion to [RISK_REGISTER.md](RISK_REGISTER.md).
