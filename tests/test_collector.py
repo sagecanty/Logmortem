@@ -45,18 +45,24 @@ def test_build_context_error_log_filtering():
     assert any("FATAL" in m for m in error_messages)
 
 
+def _word(i: int) -> str:
+    """Distinct digit-free token per i, so repeat-collapsing doesn't merge lines."""
+    return "".join("abcdefghij"[int(d)] for d in str(i))
+
+
 def test_build_context_log_cap():
     logs = [
-        {"timestamp": f"2026-04-08T02:{i:02d}:00", "message": f"event {i}"}
+        {"timestamp": f"2026-04-08T02:{i % 60:02d}:00", "message": f"event {_word(i)}"}
         for i in range(300)
     ]
     ctx = make_context(logs=logs)
     assert len(ctx["all_logs"]) == 200
+    assert ctx["omitted_log_events"] == 100
 
 
 def test_build_context_error_log_cap():
     logs = [
-        {"timestamp": f"2026-04-08T02:{i:02d}:00", "message": f"error event {i}"}
+        {"timestamp": f"2026-04-08T02:{i % 60:02d}:00", "message": f"error event {_word(i)}"}
         for i in range(100)
     ]
     ctx = make_context(logs=logs)
