@@ -7,6 +7,8 @@ import boto3
 import requests
 from datetime import datetime, timedelta
 
+from src.redact import redact_events
+
 
 def collect_logs(log_group: str, start_time: datetime, end_time: datetime) -> list[dict]:
     """
@@ -118,6 +120,10 @@ def build_context(
     """
     duration_minutes = int((end_time - start_time).total_seconds() / 60)
 
+    # Secrets / personal data never reach the prompt or the RCA (THREAT_MODEL T10)
+    logs, redacted_logs = redact_events(logs, "message")
+    deploys, redacted_deploys = redact_events(deploys, "commit_message")
+
     # Extract error-level logs for prominence
     error_logs = [
         e for e in logs
@@ -139,4 +145,5 @@ def build_context(
         "all_logs": logs[:200],          # cap at 200 for full log context
         "deploys": deploys,
         "recent_deploys": [d for d in deploys if d.get("status") in ["failure", "success"]],
+        "redacted_values": redacted_logs + redacted_deploys,
     }
