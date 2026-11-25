@@ -2,7 +2,23 @@
 formatter.py — formats RCA dict into markdown and terminal output
 """
 
+import re
 from datetime import datetime
+
+# SECURITY (THREAT_MODEL T6): everything the model writes is derived from
+# untrusted log content, and this markdown is rendered in GitHub's job
+# summary. Model text must render as plain text: no links, images, raw
+# HTML, headings or broken tables. md() is applied to every model field
+# and to context values an attacker can influence (alert, log group).
+_MD_SPECIAL = re.compile(r"([\\`*_\[\]|#])")
+
+
+def md(value) -> str:
+    """Render untrusted text as inert, single-line markdown."""
+    text = "" if value is None else str(value)
+    text = re.sub(r"\s*[\r\n]+\s*", " ", text).strip()   # no new blocks/headings
+    text = _MD_SPECIAL.sub(r"\\\1", text)              # no links/images/code/emphasis/tables
+    return text.replace("<", "&lt;").replace(">", "&gt;")  # no raw HTML
 
 
 def format_markdown(rca: dict, context: dict) -> str:
@@ -13,19 +29,19 @@ def format_markdown(rca: dict, context: dict) -> str:
     lines = []
 
     # Header
-    title = rca.get("title", "Incident Postmortem")
-    severity = rca.get("severity", "Unknown")
+    title = md(rca.get("title", "Incident Postmortem"))
+    severity = md(rca.get("severity", "Unknown"))
     lines += [
         f"# {title}",
         f"",
         f"| Field | Value |",
         f"|---|---|",
         f"| **Severity** | {severity} |",
-        f"| **Start** | {context['start_time']} |",
-        f"| **End** | {context['end_time']} |",
+        f"| **Start** | {md(context['start_time'])} |",
+        f"| **End** | {md(context['end_time'])} |",
         f"| **Duration** | {context['duration_minutes']} minutes |",
-        f"| **Alert** | {context['alert']} |",
-        f"| **Log Group** | `{context['log_group']}` |",
+        f"| **Alert** | {md(context['alert'])} |",
+        f"| **Log Group** | {md(context['log_group'])} |",
         f"| **Generated** | {now} |",
         f"",
     ]
@@ -34,7 +50,7 @@ def format_markdown(rca: dict, context: dict) -> str:
     lines += [
         "## Summary",
         "",
-        rca.get("summary", "_No summary generated._"),
+        md(rca["summary"]) if rca.get("summary") else "_No summary generated._",
         "",
     ]
 
@@ -42,7 +58,7 @@ def format_markdown(rca: dict, context: dict) -> str:
     lines += [
         "## Impact",
         "",
-        rca.get("impact", "_Unknown_"),
+        md(rca["impact"]) if rca.get("impact") else "_Unknown_",
         "",
     ]
 
@@ -50,7 +66,7 @@ def format_markdown(rca: dict, context: dict) -> str:
     lines += [
         "## Root Cause",
         "",
-        rca.get("root_cause", "_Could not determine root cause from available data._"),
+        md(rca["root_cause"]) if rca.get("root_cause") else "_Could not determine root cause from available data._",
         "",
     ]
 
@@ -60,7 +76,7 @@ def format_markdown(rca: dict, context: dict) -> str:
         lines += [
             "## Deploy Correlation",
             "",
-            deploy_correlation,
+            md(deploy_correlation),
             "",
         ]
 
@@ -69,7 +85,7 @@ def format_markdown(rca: dict, context: dict) -> str:
     if factors:
         lines += ["## Contributing Factors", ""]
         for f in factors:
-            lines.append(f"- {f}")
+            lines.append(f"- {md(f)}")
         lines.append("")
 
     # Timeline
@@ -77,7 +93,7 @@ def format_markdown(rca: dict, context: dict) -> str:
     if timeline:
         lines += ["## Timeline", ""]
         for event in timeline:
-            lines.append(f"- **{event.get('time', '')}** — {event.get('event', '')}")
+            lines.append(f"- **{md(event.get('time', ''))}** — {md(event.get('event', ''))}")
         lines.append("")
 
     # Hypotheses (if root cause uncertain)
@@ -85,7 +101,7 @@ def format_markdown(rca: dict, context: dict) -> str:
     if hypotheses:
         lines += ["## Alternative Hypotheses", ""]
         for h in hypotheses:
-            lines.append(f"- {h}")
+            lines.append(f"- {md(h)}")
         lines.append("")
 
     # Action Items
@@ -98,9 +114,9 @@ def format_markdown(rca: dict, context: dict) -> str:
             "|---|---|---|",
         ]
         for item in action_items:
-            priority = item.get("priority", "medium")
-            action = item.get("action", "")
-            owner = item.get("owner", "TBD")
+            priority = md(item.get("priority", "medium"))
+            action = md(item.get("action", ""))
+            owner = md(item.get("owner", "TBD"))
             lines.append(f"| {priority.upper()} | {action} | {owner} |")
         lines.append("")
 
